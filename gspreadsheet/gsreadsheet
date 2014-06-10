@@ -1,0 +1,91 @@
+#!/usr/bin/env python
+
+# simple python script that updates google spreadsheet cells
+
+try:
+  from xml.etree import ElementTree
+except ImportError:
+  from elementtree import ElementTree
+import gdata.spreadsheet.service
+import gdata.service
+import atom.service
+import gdata.spreadsheet
+import atom
+import getopt
+import sys
+import os
+import string
+import getpass
+import re
+
+
+
+# dumps feed contents, e.g. list of spreadsheets
+def PrintFeed(feed):
+  for i, entry in enumerate(feed.entry):
+    if isinstance(feed, gdata.spreadsheet.SpreadsheetsCellsFeed):
+      print '%s %s' % (entry.title.text, entry.content.text)
+    elif isinstance(feed, gdata.spreadsheet.SpreadsheetsListFeed):
+      print '%s %s %s' % (i, entry.title.text, entry.content.text)
+      print 'Contents:'
+      for key in entry.custom:  
+        print '  %s: %s' % (key, entry.custom[key].text) 
+      print '\n',
+    else:
+      print '%s %s' % (entry.id.text.split('/')[-1], entry.title.text)
+
+if len(sys.argv) >= 2:
+  gd_client = gdata.spreadsheet.service.SpreadsheetsService()
+  try:
+    gd_client.password = os.environ['PASSWORD']
+  except:
+    gd_client.password = getpass.getpass()
+
+  gd_client.email = sys.argv[1]
+  gd_client.source = 'Spreadsheets GData Script'
+  gd_client.ProgrammaticLogin()
+
+  spreadsheets = gd_client.GetSpreadsheetsFeed()
+  
+  if len(sys.argv) >= 3:
+    key = sys.argv[2]
+    worksheets = gd_client.GetWorksheetsFeed(key)
+    if len(sys.argv) >= 4:
+      sheet_id = sys.argv[3]
+      if len(sys.argv) >= 6:
+        col = sys.argv[4]
+        row = sys.argv[5]
+        
+        if len(sys.argv) == 7:
+          formula = sys.argv[6]
+
+          cell = gd_client.UpdateCell(inputValue = formula,
+                                      row = row, col = col,
+                                      key = key,
+                                      wksht_id = sheet_id)
+          print cell.content.text
+
+        else:
+          query = gdata.spreadsheet.service.CellQuery()
+          query['min-col'] = query['max-col'] = str(col)
+          query['min-row'] = query['max-row'] = str(row)
+          cells = gd_client.GetCellsFeed(key, sheet_id, query=query)
+          print cells.entry[0].content.text
+      else:
+        print "please supply a cell address"
+    else:
+      PrintFeed(worksheets)
+  else:
+    PrintFeed(spreadsheets)
+else:
+  print """Usage: gsreadsheet USER [key] [sheet id] [column] [row] [formula]
+Examples:
+ list available spreadsheets:
+  gsreadsheet.py ilias
+ list available worksheets:
+  gsreadsheet.py <username> <docid>
+ get computed value of a cell:
+  gsreadsheet <username> <docid> <sheetid> <col> <row>
+ set cell formula (and get computed value):
+  gspreadsheet.py ilias abc123 od1 1 2 '=A2*10'
+"""
